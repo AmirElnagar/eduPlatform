@@ -4,17 +4,20 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ParentModel extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'parents';
 
     protected $fillable = [
         'user_id',
+        'address',
     ];
 
+    // Relationships
     public function user()
     {
         return $this->belongsTo(User::class);
@@ -22,39 +25,31 @@ class ParentModel extends Model
 
     public function students()
     {
-        return $this->hasMany(Student::class, 'parent_id', 'user_id');
+        return $this->belongsToMany(Student::class, 'parent_student', 'parent_id', 'student_id')
+            ->withTimestamps();
     }
 
-    // Get all enrollments for all children
-    public function getAllEnrollments()
+    public function pendingRequests()
     {
-        $studentIds = $this->students->pluck('id');
-
-        return Enrollment::whereIn('student_id', $studentIds)
-            ->with(['student', 'group'])
-            ->get();
+        return $this->hasMany(ParentStudentRequest::class, 'parent_id')
+            ->where('status', 'pending');
     }
 
-    // Get attendance summary for all children
-    public function getAttendanceSummary()
+    public function requests()
     {
-        $studentIds = $this->students->pluck('id');
-
-        return Attendance::whereIn('student_id', $studentIds)
-            ->with(['student', 'group'])
-            ->orderBy('session_date', 'desc')
-            ->get();
+        return $this->hasMany(ParentStudentRequest::class, 'parent_id');
     }
 
-    // Get exam results for all children
-    public function getExamResults()
+    // Helper Methods
+    public function hasChild(Student $student): bool
     {
-        $studentIds = $this->students->pluck('id');
+        return $this->students()->where('students.id', $student->id)->exists();
+    }
 
-        return ExamAttempt::whereIn('student_id', $studentIds)
-            ->where('status', 'graded')
-            ->with(['student', 'exam'])
-            ->orderBy('graded_at', 'desc')
-            ->get();
+    public function hasPendingRequestFor(Student $student): bool
+    {
+        return $this->pendingRequests()
+            ->where('student_id', $student->id)
+            ->exists();
     }
 }

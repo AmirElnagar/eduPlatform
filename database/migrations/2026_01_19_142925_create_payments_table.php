@@ -6,41 +6,42 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
-
-            $table->foreignId('enrollment_id')
-                ->constrained()
-                ->cascadeOnDelete();
-
-            $table->decimal('amount', 10, 2);
-
-            // online | offline
-            $table->string('payment_method');
-
-            $table->string('payment_gateway')->nullable();
-            $table->string('transaction_id')->nullable();
-
-            // pending | completed | failed | refunded
-            $table->string('status')->default('pending');
-
-            $table->timestamp('paid_at')->nullable();
-
+            $table->foreignId('student_id')->constrained('students')->cascadeOnDelete();
+            $table->foreignId('group_id')->constrained('groups')->cascadeOnDelete();
+            $table->foreignId('teacher_id')->constrained('teachers')->cascadeOnDelete();
+            
+            // معلومات الدفع
+            $table->decimal('amount', 8, 2);
+            $table->string('payment_method'); // online, cash
+            $table->string('status')->default('pending'); // pending, completed, failed, refunded
+            
+            // للدفع الأونلاين
+            $table->string('transaction_id')->nullable()->unique(); // معرف المعاملة من بوابة الدفع
+            $table->string('payment_gateway')->nullable(); // paymob, fawry, etc
+            $table->json('payment_details')->nullable(); // تفاصيل إضافية من بوابة الدفع
+            
+            // للدفع الكاش
+            $table->text('notes')->nullable(); // ملاحظات (مثلاً: تم الدفع يوم كذا)
+            $table->timestamp('paid_at')->nullable(); // تاريخ الدفع الفعلي
+            
+            // الفترة المدفوعة
+            $table->date('period_start')->nullable(); // بداية الفترة المدفوعة
+            $table->date('period_end')->nullable(); // نهاية الفترة المدفوعة
+            
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->index(['status']);
-            $table->index(['transaction_id']);
+            $table->index(['student_id', 'group_id']);
+            $table->index('status');
+            $table->index('payment_method');
+            $table->index('transaction_id');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('payments');

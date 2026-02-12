@@ -2,21 +2,24 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
         'email',
-        'phone',
         'password',
+        'phone',
         'role',
+        'profile_image',
         'is_active',
     ];
 
@@ -25,31 +28,14 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'is_active' => 'boolean',
-        'password' => 'hashed',
-    ];
-
-    // Role checks
-    public function isTeacher(): bool
+    protected function casts(): array
     {
-        return $this->role === 'teacher';
-    }
-
-    public function isStudent(): bool
-    {
-        return $this->role === 'student';
-    }
-
-    public function isParent(): bool
-    {
-        return $this->role === 'parent';
-    }
-
-    public function isAdmin(): bool
-    {
-        return $this->role === 'admin';
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'role' => UserRole::class,
+            'is_active' => 'boolean',
+        ];
     }
 
     // Relationships
@@ -67,26 +53,37 @@ class User extends Authenticatable
     {
         return $this->hasOne(ParentModel::class);
     }
-
-    public function notifications()
+    public function notifications(): HasMany
     {
-        return $this->hasMany(Notification::class)->orderBy('created_at', 'desc');
+        return $this->hasMany(Notification::class);
     }
 
-    public function unreadNotifications()
+    // Helper Methods
+    public function isAdmin(): bool
     {
-        return $this->notifications()->where('is_read', false);
+        return $this->role === UserRole::ADMIN;
     }
 
-    // Scope for active users
-    public function scopeActive($query)
+    public function isTeacher(): bool
     {
-        return $query->where('is_active', true);
+        return $this->role === UserRole::TEACHER;
     }
 
-    // Scope by role
-    public function scopeRole($query, $role)
+    public function isStudent(): bool
     {
-        return $query->where('role', $role);
+        return $this->role === UserRole::STUDENT;
+    }
+
+    public function isParent(): bool
+    {
+        return $this->role === UserRole::PARENT;
+    }
+
+    public function getProfileImageUrlAttribute(): string
+    {
+        return $this->profile_image
+            ? asset('storage/' . $this->profile_image)
+            : asset('images/default-avatar.png');
     }
 }
+

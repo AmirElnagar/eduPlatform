@@ -2,31 +2,37 @@
 
 namespace App\Models;
 
+use App\Enums\Subject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Teacher extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
+        'subject',
         'bio',
-        'specialization',
-        'experience_years',
-        'profile_image',
-        'cover_image',
-        'accept_online_payment',
-        'is_verified',
-        'rating',
-        'total_students',
+        'years_of_experience',
+        'hourly_rate',
+        'is_subscribed',
+        'subscription_start',
+        'subscription_end',
     ];
 
-    protected $casts = [
-        'accept_online_payment' => 'boolean',
-        'is_verified' => 'boolean',
-        'rating' => 'decimal:2',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'subject' => Subject::class,
+            'years_of_experience' => 'integer',
+            'hourly_rate' => 'decimal:2',
+            'is_subscribed' => 'boolean',
+            'subscription_start' => 'datetime',
+            'subscription_end' => 'datetime',
+        ];
+    }
 
     // Relationships
     public function user()
@@ -34,69 +40,45 @@ class Teacher extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function grades()
-    {
-        return $this->belongsToMany(Grade::class, 'teacher_grades');
-    }
-
     public function groups()
     {
         return $this->hasMany(Group::class);
     }
 
-    public function activeGroups()
+    public function lessons()
     {
-        return $this->groups()->where('is_active', true);
+        return $this->hasManyThrough(Lesson::class, Group::class);
     }
 
-    public function reviews()
+    public function exams()
     {
-        return $this->hasMany(Review::class);
+        return $this->hasManyThrough(Exam::class, Group::class);
     }
 
-    public function approvedReviews()
+    public function payments()
     {
-        return $this->reviews()->where('is_approved', true);
+        return $this->hasMany(Payment::class);
     }
 
-    // Calculate average rating
-    public function updateRating()
+    // Helper Methods
+    public function isSubscriptionActive(): bool
     {
-        $avgRating = $this->approvedReviews()->avg('rating');
-        $this->update(['rating' => round($avgRating, 2)]);
-    }
-
-    // Get total enrolled students across all groups
-    public function updateTotalStudents()
-    {
-        $total = $this->groups()->sum('current_students');
-        $this->update(['total_students' => $total]);
-    }
-
-    // Scope for verified teachers
-    public function scopeVerified($query)
-    {
-        return $query->where('is_verified', true);
-    }
-
-    // Scope for teachers by specialization
-    public function scopeBySpecialization($query, $specialization)
-    {
-        return $query->where('specialization', 'like', "%{$specialization}%");
-    }
-
-    // Get profile completion percentage
-    public function getProfileCompletionAttribute()
-    {
-        $fields = ['bio', 'specialization', 'experience_years', 'profile_image'];
-        $filled = 0;
-
-        foreach ($fields as $field) {
-            if (!empty($this->$field)) {
-                $filled++;
-            }
+        if (!$this->is_subscribed) {
+            return true; // إذا الاشتراكات معطلة، كل المدرسين active
         }
 
-        return ($filled / count($fields)) * 100;
+        return $this->subscription_end && $this->subscription_end->isFuture();
+    }
+
+    public function totalStudents(): int
+    {
+        return $this->groups()->withCount('students')->get()->sum('students_count');
+    }
+
+    public function totalEarnings(): float
+    {
+        return $this->payments()
+            ->where('status', 'completed')
+            ->sum('amount');
     }
 }

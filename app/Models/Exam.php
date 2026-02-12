@@ -4,35 +4,46 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-// ===================================
-// Exam Model
-// ===================================
 class Exam extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'group_id',
         'title',
         'description',
-        'total_marks',
-        'pass_marks',
+        'instructions',
         'duration_minutes',
-        'type',
-        'is_published',
+        'total_marks',
+        'passing_marks',
         'starts_at',
         'ends_at',
+        'shuffle_questions',
+        'show_results_immediately',
+        'allow_retake',
+        'max_attempts',
+        'is_published',
     ];
 
-    protected $casts = [
-        'total_marks' => 'decimal:2',
-        'pass_marks' => 'decimal:2',
-        'is_published' => 'boolean',
-        'starts_at' => 'datetime',
-        'ends_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'duration_minutes' => 'integer',
+            'total_marks' => 'decimal:2',
+            'passing_marks' => 'decimal:2',
+            'starts_at' => 'datetime',
+            'ends_at' => 'datetime',
+            'shuffle_questions' => 'boolean',
+            'show_results_immediately' => 'boolean',
+            'allow_retake' => 'boolean',
+            'max_attempts' => 'integer',
+            'is_published' => 'boolean',
+        ];
+    }
 
+    // Relationships
     public function group()
     {
         return $this->belongsTo(Group::class);
@@ -40,7 +51,7 @@ class Exam extends Model
 
     public function questions()
     {
-        return $this->hasMany(Question::class)->orderBy('order_index');
+        return $this->hasMany(ExamQuestion::class)->orderBy('order');
     }
 
     public function attempts()
@@ -48,60 +59,46 @@ class Exam extends Model
         return $this->hasMany(ExamAttempt::class);
     }
 
-    // Check if exam is available for students
-    public function isAvailable()
+    // Helper Methods
+    public function isAvailable(): bool
     {
-        if (!$this->is_published) return false;
+        if (!$this->is_published) {
+            return false;
+        }
 
         $now = now();
 
-        if ($this->starts_at && $now->lt($this->starts_at)) return false;
-        if ($this->ends_at && $now->gt($this->ends_at)) return false;
+        if ($this->starts_at && $now->lt($this->starts_at)) {
+            return false;
+        }
+
+        if ($this->ends_at && $now->gt($this->ends_at)) {
+            return false;
+        }
 
         return true;
     }
 
-    // Check if student has attempted this exam
-    public function hasBeenAttemptedBy($studentId)
+    public function canStudentTake(Student $student): bool
     {
-        return $this->attempts()
-            ->where('student_id', $studentId)
-            ->exists();
+        if (!$this->isAvailable()) {
+            return false;
+        }
+
+        if (!$this->allow_retake) {
+            return !$this->attempts()->where('student_id', $student->id)->exists();
+        }
+
+        if ($this->max_attempts) {
+            $attempts = $this->attempts()->where('student_id', $student->id)->count();
+            return $attempts < $this->max_attempts;
+        }
+
+        return true;
     }
 
-    // Get student's attempt
-    public function getStudentAttempt($studentId)
+    public function getStudentAttempts(Student $student)
     {
-        return $this->attempts()
-            ->where('student_id', $studentId)
-            ->latest()
-            ->first();
-    }
-
-    // Calculate pass percentage
-    public function getPassPercentageAttribute()
-    {
-        if ($this->total_marks == 0) return 0;
-        return round(($this->pass_marks / $this->total_marks) * 100, 2);
-    }
-
-    // Scope for published exams
-    public function scopePublished($query)
-    {
-        return $query->where('is_published', true);
-    }
-
-    // Scope for available exams
-    public function scopeAvailable($query)
-    {
-        return $query->published()
-            ->where(function ($q) {
-                $q->whereNull('starts_at')
-                    ->orWhere('starts_at', '<=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now());
-            });
+        return $this->attempts()->where('student_id', $student->id)->count();
     }
 }

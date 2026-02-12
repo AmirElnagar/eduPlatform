@@ -4,84 +4,107 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'enrollment_id',
+        'student_id',
+        'group_id',
+        'teacher_id',
         'amount',
         'payment_method',
-        'payment_gateway',
-        'transaction_id',
         'status',
+        'transaction_id',
+        'payment_gateway',
+        'payment_details',
+        'notes',
         'paid_at',
+        'period_start',
+        'period_end',
     ];
 
-    protected $casts = [
-        'amount' => 'decimal:2',
-        'paid_at' => 'datetime',
-    ];
-
-    public function enrollment()
+    protected function casts(): array
     {
-        return $this->belongsTo(Enrollment::class);
+        return [
+            'amount' => 'decimal:2',
+            'payment_details' => 'array',
+            'paid_at' => 'datetime',
+            'period_start' => 'date',
+            'period_end' => 'date',
+        ];
     }
 
-    // Mark as completed
-    public function markCompleted($transactionId = null)
+    // Relationships
+    public function student()
+    {
+        return $this->belongsTo(Student::class);
+    }
+
+    public function group()
+    {
+        return $this->belongsTo(Group::class);
+    }
+
+    public function teacher()
+    {
+        return $this->belongsTo(Teacher::class);
+    }
+
+    // Helper Methods
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->status === 'failed';
+    }
+
+    public function isRefunded(): bool
+    {
+        return $this->status === 'refunded';
+    }
+
+    public function isOnline(): bool
+    {
+        return $this->payment_method === 'online';
+    }
+
+    public function isCash(): bool
+    {
+        return $this->payment_method === 'cash';
+    }
+
+    public function markAsCompleted(?string $transactionId = null)
     {
         $this->update([
             'status' => 'completed',
-            'transaction_id' => $transactionId,
             'paid_at' => now(),
-        ]);
-
-        // Update enrollment payment status
-        $this->enrollment->update([
-            'payment_status' => 'paid',
-            'amount_paid' => $this->amount,
-        ]);
-
-        // Activate enrollment if it was pending
-        if ($this->enrollment->status === 'pending') {
-            $this->enrollment->activate();
-            $this->enrollment->group->incrementStudents();
-        }
-    }
-
-    // Mark as failed
-    public function markFailed()
-    {
-        $this->update(['status' => 'failed']);
-    }
-
-    // Mark as refunded
-    public function markRefunded()
-    {
-        $this->update(['status' => 'refunded']);
-
-        $this->enrollment->update([
-            'payment_status' => 'refunded',
+            'transaction_id' => $transactionId ?? $this->transaction_id,
         ]);
     }
 
-    // Scope by status
-    public function scopeByStatus($query, $status)
+    public function markAsFailed()
     {
-        return $query->where('status', $status);
+        $this->update([
+            'status' => 'failed',
+        ]);
     }
 
-    // Scope completed payments
-    public function scopeCompleted($query)
+    public function refund(?string $reason = null)
     {
-        return $query->where('status', 'completed');
-    }
-
-    // Scope pending payments
-    public function scopePending($query)
-    {
-        return $query->where('status', 'pending');
+        $this->update([
+            'status' => 'refunded',
+            'notes' => $reason,
+        ]);
     }
 }

@@ -2,61 +2,48 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Notification extends Model
 {
-    use HasFactory;
+    use HasUuids;
+
+    protected $table = 'notifications';
+
+    protected $primaryKey = 'id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
-        'user_id',
-        'title',
-        'message',
         'type',
-        'is_read',
+        'notifiable_type',
+        'notifiable_id',
+        'user_id',
+        'data',
         'read_at',
     ];
 
     protected $casts = [
-        'is_read' => 'boolean',
-        'read_at' => 'datetime',
+        'data'    => 'array',
+        'read_at'=> 'datetime',
     ];
 
-    public function user()
+    /**
+     * Polymorphic relation (notifiable)
+     */
+    public function notifiable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * المستخدم المستهدف بالإشعار
+     */
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    // Mark as read
-    public function markAsRead()
-    {
-        $this->update([
-            'is_read' => true,
-            'read_at' => now(),
-        ]);
-    }
-
-    // Scope unread notifications
-    public function scopeUnread($query)
-    {
-        return $query->where('is_read', false);
-    }
-
-    // Scope by type
-    public function scopeByType($query, $type)
-    {
-        return $query->where('type', $type);
-    }
-
-    // Static method to send notification
-    public static function send($userId, $title, $message, $type = 'info')
-    {
-        return self::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $message,
-            'type' => $type,
-        ]);
     }
 }

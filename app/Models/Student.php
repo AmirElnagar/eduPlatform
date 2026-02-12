@@ -2,19 +2,28 @@
 
 namespace App\Models;
 
+use App\Enums\GradeLevel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Student extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
-        'parent_id',
-        'grade_id',
-        'profile_image',
+        'grade_level',
+        'parent_phone',
+        'address',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'grade_level' => GradeLevel::class,
+        ];
+    }
 
     // Relationships
     public function user()
@@ -22,40 +31,48 @@ class Student extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function parent()
-    {
-        return $this->belongsTo(User::class, 'parent_id');
-    }
-
-    public function grade()
-    {
-        return $this->belongsTo(Grade::class);
-    }
-
-    public function enrollments()
-    {
-        return $this->hasMany(Enrollment::class);
-    }
-
-    public function activeEnrollments()
-    {
-        return $this->enrollments()->where('status', 'active')
-            ->where(function ($q) {
-                $q->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            });
-    }
-
     public function groups()
     {
-        return $this->belongsToMany(Group::class, 'enrollments')
-            ->withPivot('status', 'enrolled_at', 'expires_at')
+        return $this->belongsToMany(Group::class, 'group_student')
+            ->withPivot([
+                'status',
+                'payment_status',
+                'payment_method',
+                'enrolled_at',
+                'expires_at',
+                'cancelled_at',
+                'amount_paid',
+                'notes',
+            ])
             ->withTimestamps();
     }
 
-    public function attendances()
+    public function activeGroups()
     {
-        return $this->hasMany(Attendance::class);
+        return $this->groups()
+            ->wherePivot('status', 'active')
+            ->wherePivot('payment_status', 'paid');
+    }
+
+    public function parents()
+    {
+        return $this->belongsToMany(ParentModel::class, 'parent_student', 'student_id', 'parent_id')
+            ->withTimestamps();
+    }
+
+    public function parentRequests()
+    {
+        return $this->hasMany(ParentStudentRequest::class);
+    }
+
+    public function lessons()
+    {
+        return $this->hasManyThrough(Lesson::class, Group::class);
+    }
+
+    public function attendance()
+    {
+        return $this->hasMany(LessonAttendance::class);
     }
 
     public function examAttempts()
@@ -63,56 +80,26 @@ class Student extends Model
         return $this->hasMany(ExamAttempt::class);
     }
 
-    public function reviews()
+    public function payments()
     {
-        return $this->hasMany(Review::class);
+        return $this->hasMany(Payment::class);
     }
 
-    // Check if student is enrolled in a group
-    public function isEnrolledIn($groupId)
+    public function lessonViews()
     {
-        return $this->activeEnrollments()
-            ->where('group_id', $groupId)
-            ->exists();
+        return $this->hasMany(LessonView::class);
     }
 
-    // Get student's attendance rate for a group
-    public function getAttendanceRate($groupId)
+    // Helper Methods
+    public function hasAccessToGroup(Group $group): bool
     {
-        $total = $this->attendances()
-            ->where('group_id', $groupId)
-            ->count();
-
-        if ($total === 0) return 0;
-
-        $present = $this->attendances()
-            ->where('group_id', $groupId)
-            ->where('status', 'present')
-            ->count();
-
-        return round(($present / $total) * 100, 2);
+        return $this->activeGroups()->where('groups.id', $group->id)->exists();
     }
 
-    // Get student's average score for a group
-    public function getAverageScore($groupId)
+    public function totalPaidAmount(): float
     {
-        return $this->examAttempts()
-            ->whereHas('exam', function ($q) use ($groupId) {
-                $q->where('group_id', $groupId);
-            })
-            ->where('status', 'graded')
-            ->avg('score');
-    }
-
-    // Scope for students by grade
-    public function scopeByGrade($query, $gradeId)
-    {
-        return $query->where('grade_id', $gradeId);
-    }
-
-    // Scope for students with parent
-    public function scopeHasParent($query)
-    {
-        return $query->whereNotNull('parent_id');
+        return $this->payments()
+            ->where('status', 'completed')
+            ->sum('amount');
     }
 }

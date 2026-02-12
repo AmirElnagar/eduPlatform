@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Enrollment;
 use App\Models\User;
 use App\Models\Teacher;
 use App\Models\Student;
@@ -31,7 +32,7 @@ class AdminDashboardController extends Controller
 
         // Recent activity
         $recentUsers = User::orderBy('created_at', 'desc')->limit(10)->get();
-        $recentEnrollments = \App\Models\Enrollment::with(['student.user', 'group'])
+        $recentEnrollments = Enrollment::with(['student.user', 'group'])
             ->orderBy('enrolled_at', 'desc')
             ->limit(10)
             ->get();

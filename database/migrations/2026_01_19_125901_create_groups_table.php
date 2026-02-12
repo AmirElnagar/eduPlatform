@@ -6,35 +6,33 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('groups', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('teacher_id')->constrained()->onDelete('cascade');
-            $table->foreignId('grade_id')->constrained()->onDelete('cascade');
-            $table->string('name');
+            $table->foreignId('teacher_id')->constrained('teachers')->cascadeOnDelete();
+            $table->string('name'); // اسم المجموعة (يحدده المدرس)
+            $table->string('subject'); // المادة
+            $table->string('grade_level'); // المرحلة الدراسية
             $table->text('description')->nullable();
-            $table->integer('max_students')->default(50);
-            $table->integer('current_students')->default(0);
-            $table->decimal('price', 10, 2)->default(0);
-            $table->integer('subscription_duration_days')->default(30);
+            $table->integer('max_students')->default(30); // الحد الأقصى للطلاب
+            $table->integer('current_students')->default(0); // عدد الطلاب الحاليين
+            $table->string('academic_year')->nullable(); // السنة الدراسية (2024/2025)
+            
+            // معلومات الاشتراك
+            $table->decimal('price', 8, 2)->nullable(); // السعر الشهري
+            $table->string('schedule')->nullable(); // مواعيد الدروس (JSON أو Text)
+            
             $table->boolean('is_active')->default(true);
-            $table->timestamp('starts_at')->nullable();
-            $table->timestamp('ends_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
-            $table->index('teacher_id');
-            $table->index('grade_id');
+            $table->index(['teacher_id', 'grade_level']);
+            $table->index('subject');
             $table->index('is_active');
-        }); 
+        });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('groups');

@@ -2,33 +2,41 @@
 
 namespace App\Models;
 
+use App\Enums\GradeLevel;
+use App\Enums\Subject;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Group extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'teacher_id',
-        'grade_id',
         'name',
+        'subject',
+        'grade_level',
         'description',
         'max_students',
         'current_students',
+        'academic_year',
         'price',
-        'subscription_duration_days',
+        'schedule',
         'is_active',
-        'starts_at',
-        'ends_at',
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-        'price' => 'decimal:2',
-        'starts_at' => 'datetime',
-        'ends_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'subject' => Subject::class,
+            'grade_level' => GradeLevel::class,
+            'max_students' => 'integer',
+            'current_students' => 'integer',
+            'price' => 'decimal:2',
+            'is_active' => 'boolean',
+        ];
+    }
 
     // Relationships
     public function teacher()
@@ -36,36 +44,32 @@ class Group extends Model
         return $this->belongsTo(Teacher::class);
     }
 
-    public function grade()
-    {
-        return $this->belongsTo(Grade::class);
-    }
-
-    public function enrollments()
-    {
-        return $this->hasMany(Enrollment::class);
-    }
-
-    public function activeEnrollments()
-    {
-        return $this->enrollments()->where('status', 'active');
-    }
-
     public function students()
     {
-        return $this->belongsToMany(Student::class, 'enrollments')
-            ->withPivot('status', 'enrolled_at', 'expires_at')
+        return $this->belongsToMany(Student::class, 'group_student')
+            ->withPivot([
+                'status',
+                'payment_status',
+                'payment_method',
+                'enrolled_at',
+                'expires_at',
+                'cancelled_at',
+                'amount_paid',
+                'notes',
+            ])
             ->withTimestamps();
     }
 
-    public function contents()
+    public function activeStudents()
     {
-        return $this->hasMany(Content::class)->orderBy('order_index');
+        return $this->students()
+            ->wherePivot('status', 'active')
+            ->wherePivot('payment_status', 'paid');
     }
 
-    public function publishedContents()
+    public function lessons()
     {
-        return $this->contents()->where('is_published', true);
+        return $this->hasMany(Lesson::class);
     }
 
     public function exams()
@@ -73,72 +77,34 @@ class Group extends Model
         return $this->hasMany(Exam::class);
     }
 
-    public function attendances()
+    public function payments()
     {
-        return $this->hasMany(Attendance::class);
+        return $this->hasMany(Payment::class);
     }
 
-    // Check if group is full
-    public function isFull()
+    // Helper Methods
+    public function isFull(): bool
     {
         return $this->current_students >= $this->max_students;
     }
 
-    // Check if group is active and within date range
-    public function isAvailable()
+    public function hasAvailableSeats(): bool
     {
-        if (!$this->is_active) return false;
-
-        $now = now();
-
-        if ($this->starts_at && $now->lt($this->starts_at)) return false;
-        if ($this->ends_at && $now->gt($this->ends_at)) return false;
-
-        return true;
+        return $this->current_students < $this->max_students;
     }
 
-    // Increment student count
+    public function availableSeats(): int
+    {
+        return max(0, $this->max_students - $this->current_students);
+    }
+
     public function incrementStudents()
     {
         $this->increment('current_students');
     }
 
-    // Decrement student count
     public function decrementStudents()
     {
-        if ($this->current_students > 0) {
-            $this->decrement('current_students');
-        }
-    }
-
-    // Get available slots
-    public function getAvailableSlotsAttribute()
-    {
-        return max(0, $this->max_students - $this->current_students);
-    }
-
-    // Scope for active groups
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    // Scope for available groups (active and not full)
-    public function scopeAvailable($query)
-    {
-        return $query->active()
-            ->whereRaw('current_students < max_students');
-    }
-
-    // Scope by grade
-    public function scopeByGrade($query, $gradeId)
-    {
-        return $query->where('grade_id', $gradeId);
-    }
-
-    // Scope by teacher
-    public function scopeByTeacher($query, $teacherId)
-    {
-        return $query->where('teacher_id', $teacherId);
+        $this->decrement('current_students');
     }
 }

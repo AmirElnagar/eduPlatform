@@ -6,30 +6,29 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('teachers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade')->unique();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('subject'); // المادة التي يدرسها
             $table->text('bio')->nullable();
-            $table->string('specialization')->nullable();
-            $table->integer('experience_years')->default(0);
-            $table->string('profile_image')->nullable();
-            $table->string('cover_image')->nullable();
-            $table->boolean('accept_online_payment')->default(false);
-            $table->boolean('is_verified')->default(false);
-            $table->decimal('rating', 3, 2)->default(0);
-            $table->integer('total_students')->default(0);
+            $table->integer('years_of_experience')->default(0);
+            $table->decimal('hourly_rate', 8, 2)->nullable(); // سعر الساعة (للمستقبل)
+            
+            // Subscription fields (معطلة حالياً - للمستقبل)
+            $table->boolean('is_subscribed')->default(false);
+            $table->timestamp('subscription_start')->nullable();
+            $table->timestamp('subscription_end')->nullable();
+            
             $table->timestamps();
+            $table->softDeletes();
+
+            $table->index('subject');
+            $table->index('is_subscribed');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('teachers');

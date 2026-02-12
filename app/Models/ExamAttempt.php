@@ -12,20 +12,30 @@ class ExamAttempt extends Model
     protected $fillable = [
         'exam_id',
         'student_id',
+        'attempt_number',
         'score',
-        'status',
+        'percentage',
+        'passed',
         'started_at',
         'submitted_at',
-        'graded_at',
+        'time_taken_minutes',
+        'status',
     ];
 
-    protected $casts = [
-        'score' => 'decimal:2',
-        'started_at' => 'datetime',
-        'submitted_at' => 'datetime',
-        'graded_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'attempt_number' => 'integer',
+            'score' => 'decimal:2',
+            'percentage' => 'decimal:2',
+            'passed' => 'boolean',
+            'started_at' => 'datetime',
+            'submitted_at' => 'datetime',
+            'time_taken_minutes' => 'integer',
+        ];
+    }
 
+    // Relationships
     public function exam()
     {
         return $this->belongsTo(Exam::class);
@@ -38,94 +48,71 @@ class ExamAttempt extends Model
 
     public function answers()
     {
-        return $this->hasMany(StudentAnswer::class, 'attempt_id');
+        return $this->hasMany(ExamAnswer::class, 'attempt_id');
     }
 
-    // Submit attempt
+    // Helper Methods
+    public function isInProgress(): bool
+    {
+        return $this->status === 'in_progress';
+    }
+
+    public function isSubmitted(): bool
+    {
+        return $this->status === 'submitted';
+    }
+
+    public function isGraded(): bool
+    {
+        return $this->status === 'graded';
+    }
+
     public function submit()
     {
         $this->update([
-            'status' => 'submitted',
             'submitted_at' => now(),
+            'time_taken_minutes' => $this->started_at->diffInMinutes(now()),
+            'status' => 'submitted',
         ]);
 
-        // Auto-grade MCQ questions
         $this->autoGradeMcq();
     }
 
-    // Auto-grade MCQ questions
-    public function autoGradeMcq()
+    private function autoGradeMcq()
     {
         $totalScore = 0;
+        $mcqAnswers = $this->answers()->whereHas('question', function ($q) {
+            $q->where('type', 'mcq');
+        })->get();
 
-        foreach ($this->answers as $answer) {
-            if ($answer->question->type === 'mcq' && $answer->selected_option_id) {
-                if ($answer->question->isCorrectOption($answer->selected_option_id)) {
-                    $marks = $answer->question->marks;
-                    $answer->update(['marks_obtained' => $marks]);
-                    $totalScore += $marks;
-                } else {
-                    $answer->update(['marks_obtained' => 0]);
-                }
+        foreach ($mcqAnswers as $answer) {
+            if ($answer->is_correct) {
+                $totalScore += $answer->question->marks;
+                $answer->update(['marks_obtained' => $answer->question->marks]);
             }
         }
 
         // Check if all questions are MCQ
-        $allMcq = $this->exam->questions()->where('type', '!=', 'mcq')->count() === 0;
+        $hasEssay = $this->answers()->whereHas('question', function ($q) {
+            $q->where('type', 'essay');
+        })->exists();
 
-        if ($allMcq) {
-            $this->update([
-                'score' => $totalScore,
-                'status' => 'graded',
-                'graded_at' => now(),
-            ]);
+        if (!$hasEssay) {
+            $this->calculateFinalScore();
         }
     }
 
-    // Calculate final score
-    public function calculateScore()
+    public function calculateFinalScore()
     {
         $totalScore = $this->answers()->sum('marks_obtained');
+        $percentage = ($totalScore / $this->exam->total_marks) * 100;
+        $passed = $totalScore >= $this->exam->passing_marks;
 
         $this->update([
             'score' => $totalScore,
+            'percentage' => $percentage,
+            'passed' => $passed,
             'status' => 'graded',
-            'graded_at' => now(),
         ]);
-
-        return $totalScore;
-    }
-
-    // Check if student passed
-    public function hasPassed()
-    {
-        return $this->score >= $this->exam->pass_marks;
-    }
-
-    // Get percentage
-    public function getPercentageAttribute()
-    {
-        if ($this->exam->total_marks == 0) return 0;
-        return round(($this->score / $this->exam->total_marks) * 100, 2);
-    }
-
-    // Check if exam time has expired
-    public function hasExpired()
-    {
-        if (!$this->started_at || !$this->exam->duration_minutes) return false;
-
-        $endTime = $this->started_at->addMinutes($this->exam->duration_minutes);
-        return now()->gt($endTime);
-    }
-
-    // Get remaining time in minutes
-    public function getRemainingMinutes()
-    {
-        if (!$this->started_at || !$this->exam->duration_minutes) return null;
-
-        $endTime = $this->started_at->addMinutes($this->exam->duration_minutes);
-        $remaining = now()->diffInMinutes($endTime, false);
-
-        return max(0, $remaining);
     }
 }
