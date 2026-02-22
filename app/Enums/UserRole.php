@@ -8,6 +8,7 @@ enum UserRole: string
     case TEACHER = 'teacher';
     case STUDENT = 'student';
     case PARENT = 'parent';
+    case USER = 'user'; // ← مستخدم عادي (لسه مكملش بياناته)
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum UserRole: string
             self::TEACHER => 'مدرس',
             self::STUDENT => 'طالب',
             self::PARENT => 'ولي أمر',
+            self::USER => 'مستخدم', // ← جديد
         };
     }
 
