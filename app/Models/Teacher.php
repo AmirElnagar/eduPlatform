@@ -75,6 +75,10 @@ class Teacher extends Model
         return $this->groups()->withCount('students')->get()->sum('students_count');
     }
 
+    public function reviews()
+    {
+        return $this->hasMany(Review::class);
+    }
     public function totalEarnings(): float
     {
         return $this->payments()

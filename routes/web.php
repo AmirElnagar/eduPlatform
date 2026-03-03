@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Teacher\TeacherController;
 
 // Home page
 Route::view('/', 'welcome')->name('home');
@@ -9,12 +10,16 @@ Route::view('/', 'welcome')->name('home');
 // Auth routes (من Breeze)
 require __DIR__ . '/auth.php';
 
+// Teacher routes
+
+Route::get('/teachers', [TeacherController::class, 'index'])->name('teachers.index');
+Route::get('/teachers/{teacher}', [TeacherController::class, 'show'])->name('teachers.show');
 
 // Dashboard redirect based on role
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', function () {
         $user = auth()->user();
-        
+
         return match($user->role->value) {
             'admin' => redirect()->route('admin.dashboard'),
             'teacher' => redirect()->route('teacher.dashboard'),
